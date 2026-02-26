@@ -1,0 +1,301 @@
+---
+import { getSets, createSet, addToSet, getJudges, addJudge } from '../lib/db';
+import { getAllProblems, addNewProblem, changeProblemStatus, deleteProblem, getSmartRecommendation } from '../lib/problemService';
+import { parseTags } from '../lib/utils';
+
+const judges = getJudges();
+
+// Handle Form Submissions
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = data.get('action');
+
+  if (action === 'add_problem') {
+    const hours = parseInt(data.get('completion_time_hours') || '0');
+    const minutes = parseInt(data.get('completion_time_minutes_part') || '0');
+    const totalMinutes = (hours * 60) + minutes;
+
+    addNewProblem({
+      nombre: data.get('nombre'),
+      url: data.get('url'),
+      origen: data.get('origen'),
+      tags: data.get('tags'),
+      estado: data.get('estado') || 'nuevo',
+      notas: data.get('notas'),
+      dificultad: data.get('dificultad'),
+      solved_at: data.get('solved_at'),
+      completion_time_minutes: totalMinutes > 0 ? totalMinutes : null
+    });
+  } else if (action === 'create_set') {
+    createSet(data.get('title'), data.get('description'));
+  } else if (action === 'add_to_set') {
+    const hours = parseInt(data.get('completion_time_hours') || '0');
+    const minutes = parseInt(data.get('completion_time_minutes_part') || '0');
+    const totalMinutes = (hours * 60) + minutes;
+
+    const info = addNewProblem({
+      nombre: data.get('nombre'),
+      url: data.get('url'),
+      origen: data.get('origen'),
+      tags: data.get('tags'),
+      estado: data.get('estado') || 'nuevo',
+      notas: data.get('notas'),
+      dificultad: data.get('dificultad'),
+      solved_at: data.get('solved_at'),
+      completion_time_minutes: totalMinutes > 0 ? totalMinutes : null
+    });
+    addToSet(data.get('set_id'), info.lastInsertRowid);
+  } else if (action === 'update_status') {
+    changeProblemStatus(data.get('id'), data.get('status'));
+  } else if (action === 'delete_problem') {
+    deleteProblem(data.get('id'));
+  } else if (action === 'add_judge') {
+    addJudge(data.get('name'));
+  }
+}
+
+// Filters from URL
+const url = new URL(Astro.request.url);
+const filterJudge = url.searchParams.get('judge') || '';
+const filterStatuses = url.searchParams.getAll('status');
+const searchQuery = url.searchParams.get('q') || '';
+
+const problems = getAllProblems({ 
+    judge: filterJudge, 
+    status: filterStatuses.length > 0 ? filterStatuses : null,
+    search: searchQuery
+});
+const sets = getSets();
+
+// Recommendation Logic
+const recommendation = getSmartRecommendation({ judge: filterJudge });
+const recommendedProblem = recommendation?.problem;
+const recommendationReason = recommendation?.reason;
+
+---
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Upsolving System</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
+      .container { max-width: 1400px; margin: 0 auto; }
+      .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+      h1, h2, h3, h4 { color: #111827; margin-top: 0; }
+      .grid { display: grid; grid-template-columns: 350px 1fr 300px; gap: 2rem; }
+      input, select, textarea { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid #d4d4d8; border-radius: 4px; box-sizing: border-box;}
+      button { background: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+      button:hover { background: #1d4ed8; }
+      .btn-secondary { background: #64748b; }
+      .btn-secondary:hover { background: #475569; }
+      
+      .tag { display: inline-block; background: #e4e4e7; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.25rem; color: #52525b;}
+      
+      .status-nuevo { color: #8b5cf6; font-weight: bold; } /* Purple for new */
+      .status-pendiente { color: #ea580c; font-weight: bold; }
+      .status-resuelto { color: #16a34a; font-weight: bold; }
+      .status-finalizado { color: #0d9488; font-weight: bold; }
+      .status-baul { color: #52525b; font-weight: bold; }
+      
+      .problem-item { border-bottom: 1px solid #f3f4f6; padding: 0.75rem 0; display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
+      .problem-item:last-child { border-bottom: none; }
+      
+      .set-section { margin-top: 2rem; border-left: 4px solid #2563eb; }
+      
+      .recommendation-box { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; }
+      
+      .filter-bar { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+        <h1>🎯 Upsolving & Training Tracker</h1>
+        <div class="tabs">
+            <a href="/" class="tab active" style="margin-right: 1rem; font-weight: bold; text-decoration: none; color: #2563eb;">Problemas</a>
+            <a href="/sets" class="tab" style="margin-right: 1rem; text-decoration: none; color: #6b7280;">Sets de Entrenamiento</a>
+            <a href="/goals" class="tab" style="text-decoration: none; color: #6b7280;">Metas</a>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+        <strong>Filtrar Problemas:</strong>
+        <form style="display:flex; gap: 1rem; margin:0; flex-wrap: wrap; align-items: center;" method="GET">
+            <input type="text" name="q" value={searchQuery} placeholder="Buscar por nombre, tag..." style="padding: 0.5rem; border: 1px solid #d4d4d8; border-radius: 4px; width: auto; min-width: 250px;">
+            <select name="judge" onchange="this.form.submit()" style="width: auto; margin:0;">
+                <option value="">Todos los Jueces</option>
+                {judges.map(j => <option value={j.name} selected={filterJudge === j.name}>{j.name}</option>)}
+            </select>
+            
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+               <label style="display: flex; align-items: center; font-size: 0.9rem; cursor: pointer;">
+                   <input type="checkbox" name="status" value="nuevo" checked={filterStatuses.includes('nuevo')} onchange="this.form.submit()" style="width: auto; margin-right: 0.25rem;">
+                   Nuevo
+               </label>
+               <label style="display: flex; align-items: center; font-size: 0.9rem; cursor: pointer;">
+                   <input type="checkbox" name="status" value="pendiente" checked={filterStatuses.includes('pendiente')} onchange="this.form.submit()" style="width: auto; margin-right: 0.25rem;">
+                   Pendiente
+               </label>
+               <label style="display: flex; align-items: center; font-size: 0.9rem; cursor: pointer;">
+                   <input type="checkbox" name="status" value="resuelto" checked={filterStatuses.includes('resuelto')} onchange="this.form.submit()" style="width: auto; margin-right: 0.25rem;">
+                   Resuelto
+               </label>
+               <label style="display: flex; align-items: center; font-size: 0.9rem; cursor: pointer;">
+                   <input type="checkbox" name="status" value="finalizado" checked={filterStatuses.includes('finalizado')} onchange="this.form.submit()" style="width: auto; margin-right: 0.25rem;">
+                   Finalizado
+               </label>
+               <label style="display: flex; align-items: center; font-size: 0.9rem; cursor: pointer;">
+                   <input type="checkbox" name="status" value="baul" checked={filterStatuses.includes('baul')} onchange="this.form.submit()" style="width: auto; margin-right: 0.25rem;">
+                   Baúl
+               </label>
+            </div>
+
+            <a href="/" style="margin-left: 0.5rem; color: #666; font-size: 0.9rem;">Limpiar</a>
+        </form>
+    </div>
+
+    <div class="grid">
+        <!-- Left Column: Input & Judges -->
+        <div>
+            <!-- Recommendation -->
+            {recommendedProblem && (
+                <div class="card recommendation-box">
+                    <h2>💡 Recomendación</h2>
+                    <p style="margin-bottom: 0.5rem; font-size: 0.9rem; color: #2563eb; font-weight: 500;">{recommendationReason}</p>
+                    <div style="background: white; padding: 1rem; border-radius: 6px;">
+                        <strong style="display:block; font-size: 1.1rem; margin-bottom: 0.25rem;">
+                            <a href={recommendedProblem.url} target="_blank">{recommendedProblem.nombre}</a>
+                        </strong>
+                        <div style="display:flex; justify-content: space-between; font-size: 0.85rem; color: #666;">
+                            <span>{recommendedProblem.origen}</span>
+                            <span class={`status-${recommendedProblem.estado}`}>{recommendedProblem.estado.toUpperCase()}</span>
+                        </div>
+                        <p style="font-size: 0.85rem; color: #4b5563; margin-top: 0.5rem;">{recommendedProblem.notas}</p>
+                    </div>
+                </div>
+            )}
+
+            <div class="card">
+                <h2>➕ Nuevo Problema</h2>
+                <form method="POST">
+                    <input type="hidden" name="action" value="add_problem">
+                    <input type="text" name="nombre" placeholder="Nombre del problema" required>
+                    <input type="text" name="url" placeholder="URL">
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <select name="origen" required style="margin: 0;">
+                             <option value="" disabled selected>Juez</option>
+                             {judges.map(j => <option value={j.name}>{j.name}</option>)}
+                        </select>
+                        <select name="estado" style="margin: 0;">
+                            <option value="nuevo" selected>Nuevo</option>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="resuelto">Resuelto</option>
+                            <option value="finalizado">Finalizado</option>
+                            <option value="baul">Baúl</option>
+                        </select>
+                    </div>
+                    
+                    <input type="number" name="dificultad" placeholder="Dificultad (e.g. 1600)" style="margin-bottom: 0.5rem;">
+
+                    <div style="margin-bottom: 0.5rem;">
+                        <label style="display: block; font-size: 0.8rem; color: #6b7280; margin-bottom: 0.2rem;">Fecha de Resolución</label>
+                        <input type="datetime-local" name="solved_at" style="margin: 0; font-size: 0.9rem;">
+                    </div>
+
+                    <div style="margin-bottom: 0.5rem;">
+                         <label style="display: block; font-size: 0.8rem; color: #6b7280; margin-bottom: 0.2rem;">Tiempo de Resolución</label>
+                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                            <input type="number" name="completion_time_hours" placeholder="Horas" min="0" style="margin: 0; font-size: 0.9rem;">
+                            <input type="number" name="completion_time_minutes_part" placeholder="Minutos" min="0" max="59" style="margin: 0; font-size: 0.9rem;">
+                         </div>
+                    </div>
+
+                    <input type="text" name="tags" placeholder="Tags (dp, grafos...)">
+                    <textarea name="notas" placeholder="Notas..." rows="3"></textarea>
+                    <button type="submit">Agregar a la Cola</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3>⚖️ Jurados</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                    {judges.map(j => <span class="tag" style="font-size: 0.9rem; padding: 0.25rem 0.5rem;">{j.name}</span>)}
+                </div>
+                <form method="POST" style="display: flex; gap: 0.5rem;">
+                    <input type="hidden" name="action" value="add_judge">
+                    <input type="text" name="name" placeholder="Nuevo Jurado" required style="margin:0;">
+                    <button type="submit" class="btn-secondary" style="width: auto;">+</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Middle Column: Upsolving Queue -->
+        <div>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2>📜 Cola de Problemas</h2>
+                    <span style="background: #eef2ff; color: #4f46e5; padding: 0.2rem 0.6rem; border-radius: 99px; font-size: 0.8rem; font-weight: bold;">
+                        {problems.length}
+                    </span>
+                </div>
+                
+                {problems.length === 0 ? <p style="color: #666; text-align: center;">No hay problemas con este filtro.</p> : null}
+
+                {problems.map(p => (
+                    <div class="problem-item">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                                <strong style="font-size: 1.05rem;"><a href={`/problems/${p.id}`} style="text-decoration: none; color: #111827;">{p.nombre}</a></strong>
+                                <span style="font-size: 0.75rem; background: #f3f4f6; padding: 0.1rem 0.4rem; border-radius: 4px; color: #4b5563;">{p.origen}</span>
+                                <span style="font-size: 0.75rem; background: #e0f2fe; color: #0369a1; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: bold;">
+                                    {p.dificultad ? p.dificultad : 'N/A'}
+                                </span>
+                            </div>
+                            <div style="margin-top: 0.25rem;">
+                                {parseTags(p.tags).map((t: string) => <span class="tag">{t}</span>)}
+                            </div>
+                            {p.notas && <p style="font-size: 0.85rem; color: #4b5563; margin: 0.25rem 0 0 0;">{p.notas}</p>}
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <form method="POST" style="margin:0;">
+                                    <input type="hidden" name="action" value="update_status">
+                                    <input type="hidden" name="id" value={p.id}>
+                                    <select name="status" onchange="this.form.submit()" 
+                                        style={`padding: 2px 6px; font-size: 0.8rem; width: auto; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; background-color: #f9fafb; outline: none;`}
+                                        class={`status-${p.estado}`}
+                                    >
+                                        <option value="nuevo" selected={p.estado === 'nuevo'}>Nuevo</option>
+                                        <option value="pendiente" selected={p.estado === 'pendiente'}>Pendiente</option>
+                                        <option value="resuelto" selected={p.estado === 'resuelto'}>Resuelto</option>
+                                        <option value="finalizado" selected={p.estado === 'finalizado'}>Finalizado</option>
+                                        <option value="baul" selected={p.estado === 'baul'}>Baúl</option>
+                                    </select>
+                                </form>
+                            </div>
+                            
+                            <div style="display: flex; gap: 0.5rem; font-size: 0.8rem;">
+                                <a href={`/problems/${p.id}/edit`} style="text-decoration: none; color: #2563eb;">Editar</a>
+                                <form method="POST" style="margin:0;" onsubmit="return confirm('¿Borrar problema?');">
+                                    <input type="hidden" name="action" value="delete_problem">
+                                    <input type="hidden" name="id" value={p.id}>
+                                    <button type="submit" style="background: none; border: none; padding: 0; color: #dc2626; cursor: pointer; font-size: 0.8rem; text-decoration: underline;">Borrar</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <!-- Right Column: Training Sets (Removed, moved to /sets) -->
+        <div>
+           <!-- Section moved to /sets -->
+        </div>
+    </div>
+</div>
+</body>
+</html>

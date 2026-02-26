@@ -1,0 +1,137 @@
+---
+import { getProblemById, deleteProblem } from '../../../lib/problemService';
+import { getSets, addToSet } from '../../../lib/db';
+import { parseTags } from '../../../lib/utils';
+
+const { id } = Astro.params;
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = data.get('action');
+
+  if (action === 'delete') {
+    deleteProblem(id);
+    return Astro.redirect('/');
+  } else if (action === 'add_to_set') {
+    addToSet(data.get('set_id'), id);
+    // Reload to show success or just stay on page
+  }
+}
+
+const problem = getProblemById(id);
+const sets = getSets();
+
+if (!problem) {
+  return Astro.redirect('/404');
+}
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  return new Date(dateString).toLocaleString('es-ES', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+---
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{problem.nombre} - Upsolving System</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
+      .container { max-width: 800px; margin: 0 auto; }
+      .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+      .back-link { display: inline-block; margin-bottom: 1rem; color: #2563eb; text-decoration: none; font-weight: 500; }
+      .back-link:hover { text-decoration: underline; }
+      h1 { margin-top: 0; color: #111827; font-size: 2rem; }
+      
+      .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin: 2rem 0; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+      .meta-item { display: flex; flex-direction: column; }
+      .meta-label { font-size: 0.85rem; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+      .meta-value { font-size: 1.1rem; font-weight: 500; color: #111827; }
+      
+      .tag { display: inline-block; background: #e4e4e7; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin-right: 0.5rem; color: #52525b; }
+      
+      .status-nuevo { color: #8b5cf6; }
+      .status-pendiente { color: #ea580c; }
+      .status-resuelto { color: #16a34a; }
+      .status-baul { color: #52525b; }
+
+      .actions { margin-top: 2rem; display: flex; gap: 1rem; }
+      .btn { padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; font-weight: 500; text-align: center; }
+      .btn-primary { background: #2563eb; color: white; }
+      .btn-primary:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">&larr; Volver al listado</a>
+        
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <h1>{problem.nombre}</h1>
+                <span class={`status-${problem.estado}`} style="font-weight: bold; font-size: 1.2rem; border: 1px solid currentColor; padding: 0.2rem 0.8rem; border-radius: 6px;">
+                    {problem.estado.toUpperCase()}
+                </span>
+            </div>
+
+            <div class="meta-grid">
+                <div class="meta-item">
+                    <span class="meta-label">Juez / Origen</span>
+                    <span class="meta-value">{problem.origen}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Dificultad</span>
+                    <span class="meta-value">{problem.dificultad || 'N/A'}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Fecha de Inserción</span>
+                    <span class="meta-value">{formatDate(problem.created_at)}</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 2rem;">
+                <h3 style="margin-bottom: 0.5rem;">Etiquetas</h3>
+                <div>
+                    {parseTags(problem.tags).map((t: string) => <span class="tag">{t}</span>)}
+                </div>
+            </div>
+
+            {problem.notas && (
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 0.5rem;">Notas</h3>
+                    <p style="background: #fffbeb; padding: 1rem; border-radius: 6px; border: 1px solid #fcd34d; margin: 0; color: #92400e;">
+                        {problem.notas}
+                    </p>
+                </div>
+            )}
+
+            <div class="actions">
+                <a href={problem.url} target="_blank" class="btn btn-primary">Ver Problema Original &nearr;</a>
+                <a href={`/problems/${id}/edit`} class="btn" style="background: #e5e7eb; color: #374151;">Editar Problema</a>
+                
+                <form method="POST" style="margin: 0;" onsubmit="return confirm('¿Estás seguro de que quieres borrar este problema? Esta acción no se puede deshacer.');">
+                    <input type="hidden" name="action" value="delete">
+                    <button type="submit" class="btn" style="background: #fee2e2; color: #991b1b; cursor: pointer; font-size: 1rem; border: none; font-weight: 500;">Borrar Problema</button>
+                </form>
+            </div>
+
+            <div style="margin-top: 2rem; border-top: 1px solid #e5e7eb; padding-top: 2rem;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Añadir a un Set de Entrenamiento</h3>
+                <form method="POST" style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="hidden" name="action" value="add_to_set">
+                    <select name="set_id" required style="max-width: 300px; margin: 0;">
+                        <option value="" disabled selected>Seleccionar Set...</option>
+                        {sets.map(s => <option value={s.id}>{s.title}</option>)}
+                    </select>
+                    <button type="submit" style="padding: 0.5rem 1rem;">+ Añadir</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

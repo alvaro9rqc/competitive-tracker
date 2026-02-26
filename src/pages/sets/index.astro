@@ -1,0 +1,91 @@
+---
+import { getSets, createSet } from '../../lib/db';
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = data.get('action');
+
+  if (action === 'create_set') {
+    createSet(data.get('title'), data.get('description'));
+  }
+}
+
+const sets = getSets();
+---
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Sets de Entrenamiento - Upsolving System</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
+      .container { max-width: 1400px; margin: 0 auto; }
+      .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+      h1, h2, h3, h4 { color: #111827; margin-top: 0; }
+      .grid { display: grid; grid-template-columns: 1fr 350px; gap: 2rem; }
+      input, select, textarea { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid #d4d4d8; border-radius: 4px; box-sizing: border-box;}
+      button { background: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+      button:hover { background: #1d4ed8; }
+      
+      .tab { margin-right: 1rem; text-decoration: none; color: #6b7280; }
+      .tab.active { font-weight: bold; color: #2563eb; }
+      
+      .set-item { border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; background: #fff; }
+      .set-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+      .set-title { font-size: 1.25rem; font-weight: 600; color: #111827; }
+      .set-meta { font-size: 0.85rem; color: #6b7280; }
+      
+      .problem-list { list-style: none; padding: 0; margin: 0.5rem 0 0 0; }
+      .problem-list li { display: flex; justify-content: space-between; padding: 0.5rem; background: #f9fafb; margin-bottom: 0.25rem; border-radius: 4px; font-size: 0.9rem; }
+      .solved { color: #16a34a; font-weight: bold; }
+      .unsolved { color: #ea580c; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+        <h1>🎯 Upsolving & Training Tracker</h1>
+        <div class="tabs">
+            <a href="/" class="tab">Problemas</a>
+            <a href="/sets" class="tab active">Sets de Entrenamiento</a>
+        </div>
+    </div>
+
+    <div class="grid">
+        <!-- Main Column: Sets List -->
+        <div>
+            <h2>Mis Sets de Entrenamiento</h2>
+            {sets.length === 0 ? <p>No has creado ningún set todavía.</p> : null}
+            
+            {sets.map(s => (
+                <div class="set-item">
+                    <div class="set-header">
+                        <span class="set-title"><a href={`/sets/${s.id}`} style="text-decoration: none; color: inherit;">{s.title}</a></span>
+                        <span class="set-meta">{new Date(s.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <p style="color: #4b5563; margin-bottom: 1rem;">{s.description}</p>
+                    
+                    <div style="background: #f3f4f6; padding: 1rem; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.9rem; color: #6b7280;">{s.items.length} problemas</span>
+                        <a href={`/sets/${s.id}`} style="font-size: 0.9rem; color: #2563eb; font-weight: 500; text-decoration: none;">Gestionar Set &rarr;</a>
+                    </div>
+                </div>
+            ))}
+        </div>
+
+        <!-- Sidebar: Create Set -->
+        <div>
+            <div class="card">
+                <h3>➕ Crear Nuevo Set</h3>
+                <form method="POST">
+                    <input type="hidden" name="action" value="create_set">
+                    <input type="text" name="title" placeholder="Título del Set (e.g. DP Basics)" required>
+                    <textarea name="description" placeholder="Descripción..." rows="3"></textarea>
+                    <button type="submit" style="width: 100%;">Crear Set</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

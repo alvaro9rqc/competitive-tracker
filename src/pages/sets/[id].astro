@@ -1,0 +1,145 @@
+---
+import { getSetById, updateSet, deleteSet, removeFromSet, addToSet, getAvailableProblemsForSet } from '../../lib/db';
+import { parseTags } from '../../lib/utils';
+
+const { id } = Astro.params;
+const set = getSetById(id);
+
+if (!set) {
+  return Astro.redirect('/404');
+}
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = data.get('action');
+
+  if (action === 'update_set') {
+    updateSet(id, data.get('title'), data.get('description'));
+  } else if (action === 'delete_set') {
+    deleteSet(id);
+    return Astro.redirect('/sets');
+  } else if (action === 'remove_problem') {
+    removeFromSet(id, data.get('problem_id'));
+  } else if (action === 'add_problem') {
+    addToSet(id, data.get('problem_id'));
+  }
+  
+  // Refresh data after mutation
+  return Astro.redirect(`/sets/${id}`);
+}
+
+const availableProblems = getAvailableProblemsForSet(id);
+---
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{set.title} - Sets - Upsolving System</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
+      .container { max-width: 1000px; margin: 0 auto; }
+      .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+      h1, h2, h3, h4 { color: #111827; margin-top: 0; }
+      
+      .back-link { display: inline-block; margin-bottom: 1rem; color: #2563eb; text-decoration: none; font-weight: 500; }
+      .back-link:hover { text-decoration: underline; }
+
+      .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
+      
+      input, select, textarea { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid #d4d4d8; border-radius: 4px; box-sizing: border-box;}
+      button { background: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+      button:hover { background: #1d4ed8; }
+      
+      .tag { display: inline-block; background: #e4e4e7; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.25rem; color: #52525b;}
+      
+      .problem-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #f3f4f6; }
+      .problem-item:last-child { border-bottom: none; }
+      
+      .status-nuevo { color: #8b5cf6; }
+      .status-pendiente { color: #ea580c; }
+      .status-resuelto { color: #16a34a; }
+      .status-baul { color: #52525b; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <a href="/sets" class="back-link">&larr; Volver a Sets</a>
+    
+    <div class="grid">
+        <!-- Main: Problems List -->
+        <div>
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                   <h2>{set.title}</h2>
+                   <span style="font-size: 0.9rem; color: #6b7280;">{set.items.length} problemas</span>
+                </div>
+                <p style="color: #4b5563; margin-bottom: 2rem; background: #f9fafb; padding: 1rem; border-radius: 6px;">{set.description || 'Sin descripción'}</p>
+                
+                <h3>Problemas en este Set</h3>
+                {set.items.length === 0 ? <p style="color: #9ca3af; font-style: italic;">No hay problemas en este set.</p> : 
+                    <div style="border: 1px solid #e5e7eb; border-radius: 6px;">
+                        {set.items.map(p => (
+                            <div class="problem-item">
+                                <div>
+                                    <strong><a href={`/problems/${p.id}`} style="text-decoration: none; color: #1f2937;">{p.nombre}</a></strong>
+                                    <div style="margin-top: 0.25rem;">
+                                        <span class={`status-${p.estado}`} style="font-size: 0.75rem; font-weight: bold; margin-right: 0.5rem;">{p.estado.toUpperCase()}</span>
+                                        <span style="font-size: 0.75rem; background: #f3f4f6; padding: 0.1rem 0.4rem; border-radius: 4px; color: #4b5563;">{p.origen}</span>
+                                        {p.dificultad && <span style="font-size: 0.75rem; background: #e0f2fe; color: #0369a1; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.25rem;">{p.dificultad}</span>}
+                                    </div>
+                                </div>
+                                <form method="POST" style="margin: 0;">
+                                    <input type="hidden" name="action" value="remove_problem">
+                                    <input type="hidden" name="problem_id" value={p.id}>
+                                    <button type="submit" style="background: none; color: #dc2626; padding: 0; text-decoration: underline; font-size: 0.85rem;">Quitar</button>
+                                </form>
+                            </div>
+                        ))}
+                    </div>
+                }
+            </div>
+            
+            <div class="card">
+                <h3>🔍 Añadir Problemas Existentes</h3>
+                <form method="POST" style="display: flex; gap: 0.5rem;">
+                    <input type="hidden" name="action" value="add_problem">
+                    <select name="problem_id" required>
+                        <option value="" disabled selected>Seleccionar problema...</option>
+                        {availableProblems.map(p => (
+                            <option value={p.id}>{p.nombre} ({p.origen}) - {p.estado}</option>
+                        ))}
+                    </select>
+                    <button type="submit" style="width: auto;">Añadir</button>
+                </form>
+                {availableProblems.length === 0 && <p style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">No hay más problemas disponibles para añadir.</p>}
+            </div>
+        </div>
+        
+        <!-- Sidebar: Edit & Actions -->
+        <div>
+            <div class="card">
+                <h3>✏️ Editar Set</h3>
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_set">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.25rem;">Título</label>
+                    <input type="text" name="title" value={set.title} required>
+                    
+                    <label style="display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.25rem;">Descripción</label>
+                    <textarea name="description" rows="4">{set.description}</textarea>
+                    
+                    <button type="submit" style="width: 100%;">Guardar Cambios</button>
+                </form>
+            </div>
+            
+            <div class="card" style="border: 1px solid #fecaca; background: #fef2f2;">
+                <h3 style="color: #991b1b;">⚠️ Zona de Peligro</h3>
+                <form method="POST" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este set completo? Los problemas no se borrarán del sistema, solo de este set.');">
+                    <input type="hidden" name="action" value="delete_set">
+                    <button type="submit" style="width: 100%; background: #dc2626;">Eliminar Set</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

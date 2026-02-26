@@ -1,0 +1,266 @@
+---
+import { getGoals, createGoal, deleteGoal, getGoalWithStatus, createMetric, deleteMetric } from '../../lib/goalsService';
+import { getJudges } from '../../lib/db';
+
+const judges = getJudges();
+const goals = getGoals();
+const url = new URL(Astro.request.url);
+const currentGoalId = url.searchParams.get('goal_id');
+
+let currentGoal = null;
+if (currentGoalId) {
+    currentGoal = getGoalWithStatus(currentGoalId);
+}
+
+if (Astro.request.method === 'POST') {
+    const data = await Astro.request.formData();
+    const action = data.get('action');
+
+    if (action === 'create_goal') {
+        createGoal(data.get('name'), data.get('description'));
+        return Astro.redirect('/goals');
+    } else if (action === 'delete_goal') {
+        deleteGoal(data.get('id'));
+        return Astro.redirect('/goals');
+    } else if (action === 'create_metric') {
+        const baseFilter = {
+            judge: data.get('judge'),
+            difficultyMin: data.get('difficulty_min') ? parseInt(data.get('difficulty_min')) : null,
+            difficultyMax: data.get('difficulty_max') ? parseInt(data.get('difficulty_max')) : null
+        };
+        const targetFilter = {
+            maxTimeMinutes: data.get('max_time_minutes') ? parseInt(data.get('max_time_minutes')) : null
+        };
+        const targetRatio = parseFloat(data.get('target_ratio'));
+        createMetric(data.get('goal_id'), baseFilter, targetFilter, targetRatio);
+        return Astro.redirect(`/goals?goal_id=${data.get('goal_id')}`);
+    } else if (action === 'delete_metric') {
+        deleteMetric(data.get('id'));
+        return Astro.redirect(`/goals?goal_id=${data.get('goal_id')}`);
+    }
+}
+---
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Metas - Upsolving System</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
+      .container { max-width: 1400px; margin: 0 auto; }
+      .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+      h1, h2, h3, h4 { margin-top: 0; color: #111827; }
+      .grid { display: grid; grid-template-columns: 300px 1fr; gap: 2rem; }
+      input, select, textarea { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid #d4d4d8; border-radius: 4px; box-sizing: border-box; }
+      button { background: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; }
+      button:hover { background: #1d4ed8; }
+      .btn-danger { background: #dc2626; padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+      .btn-danger:hover { background: #b91c1c; }
+      
+      .tabs { display: flex; gap: 1rem; }
+      .tab { padding: 0.5rem 1rem; border-radius: 4px; }
+      .tab.active { background: #e0e7ff; color: #3730a3; }
+      
+      .goal-item { padding: 0.75rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; margin-bottom: 0.5rem; transition: background 0.2s; }
+      .goal-item:hover { background: #f9fafb; }
+      .goal-item.active { background: #eff6ff; border-left: 4px solid #2563eb; }
+      
+      .metric-card { border: 1px solid #e5e7eb; padding: 1.5rem; margin-bottom: 1rem; border-radius: 8px; background: #fff; }
+      
+      /* Visualization Styles */
+      .squares-container { display: flex; gap: 6px; margin-top: 1rem; align-items: center; }
+      .square { width: 28px; height: 28px; border-radius: 4px; background: #e5e7eb; position: relative; cursor: help; transition: transform 0.1s; }
+      .square:hover { transform: scale(1.1); }
+      .square.met { background: #22c55e; } /* Green */
+      .square.not-met { background: #ef4444; } /* Red */
+      .square.neutral { background: #d1d5db; } /* Gray for no data */
+      
+      .happy-animation {
+          font-size: 1.5rem;
+          animation: bounce 1s infinite;
+          display: inline-block;
+          margin-left: 1rem;
+          color: #16a34a;
+          font-weight: bold;
+      }
+      @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-5px); }
+      }
+      
+      .sidebar-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: #374151; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+            <h1 style="display: flex; align-items: center; gap: 0.5rem;">🎯 Metas <span style="font-size: 1rem; font-weight: normal; color: #6b7280;">Monitor de Progreso</span></h1>
+            <div class="tabs">
+                <a href="/" class="tab" style="text-decoration: none; color: #6b7280;">Problemas</a>
+                <a href="/sets" class="tab" style="text-decoration: none; color: #6b7280;">Sets</a>
+                <a href="/goals" class="tab active" style="font-weight: bold; text-decoration: none;">Metas</a>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- Sidebar: Goals List -->
+            <div>
+                <div class="card">
+                    <div class="sidebar-title">Mis Metas</div>
+                    <div style="margin-bottom: 1.5rem;">
+                        {goals.length === 0 ? <p style="color: #666; font-size: 0.9rem;">No tienes metas creadas.</p> : null}
+                        {goals.map(g => (
+                            <div class={`goal-item ${currentGoalId == g.id ? 'active' : ''}`}>
+                                <a href={`/goals?goal_id=${g.id}`} style="flex: 1; text-decoration: none; color: inherit; display: block;">
+                                    <strong>{g.name}</strong>
+                                </a>
+                                <form method="POST" onsubmit="return confirm('¿Eliminar esta meta?');" style="margin:0;">
+                                    <input type="hidden" name="action" value="delete_goal">
+                                    <input type="hidden" name="id" value={g.id}>
+                                    <button type="submit" class="btn-danger" style="padding: 2px 6px;">✕</button>
+                                </form>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div style="border-top: 1px solid #e5e7eb; paddingTop: 1rem;">
+                        <h4 style="margin-bottom: 0.5rem; font-size: 0.95rem;">Nueva Meta</h4>
+                        <form method="POST">
+                            <input type="hidden" name="action" value="create_goal">
+                            <input type="text" name="name" placeholder="Nombre (ej. Speedrun AtCoder)" required style="font-size: 0.9rem;">
+                            <textarea name="description" placeholder="Descripción breve..." rows="2" style="font-size: 0.9rem;"></textarea>
+                            <button type="submit" style="width: 100%; font-size: 0.9rem;">Crear Meta</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content: Selected Goal Details -->
+            <div>
+                {currentGoal ? (
+                    <div>
+                        <div class="card" style="border-top: 4px solid #2563eb;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <div style="display: flex; align-items: center;">
+                                    <h2 style="margin: 0; font-size: 1.75rem;">{currentGoal.name}</h2>
+                                    {currentGoal.isMet && <span class="happy-animation">🎉 ¡META CUMPLIDA! 🤩</span>}
+                                </div>
+                                <span style="background: #e0f2fe; color: #0369a1; padding: 0.2rem 0.8rem; border-radius: 99px; font-size: 0.8rem; font-weight: bold;">
+                                    {currentGoal.metrics.length} Métricas
+                                </span>
+                            </div>
+                            <p style="color: #4b5563; font-size: 1rem; margin-bottom: 0;">{currentGoal.description}</p>
+                        </div>
+
+                        <h3 style="margin-bottom: 1rem;">Métricas de Seguimiento</h3>
+                        
+                        {currentGoal.metrics.length === 0 ? (
+                            <div class="card" style="text-align: center; padding: 3rem; background: #fafafa; border: 2px dashed #e5e7eb;">
+                                <p style="color: #6b7280; font-size: 1.1rem;">Esta meta aún no tiene métricas definidas.</p>
+                                <p style="color: #9ca3af; font-size: 0.9rem;">Añade una métrica abajo para empezar a traquear tu progreso.</p>
+                            </div>
+                        ) : null}
+                        
+                        {currentGoal.metrics.map(metric => (
+                            <div class="metric-card">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                                    <div style="font-size: 0.95rem; line-height: 1.5;">
+                                        <div style="margin-bottom: 0.25rem;">
+                                            <span style="font-weight: bold; color: #374151;">Filtro Base:</span> 
+                                            {metric.baseFilter.judge || 'Todos'} 
+                                            {(metric.baseFilter.difficultyMin || metric.baseFilter.difficultyMax) && 
+                                                ` (Dif: ${metric.baseFilter.difficultyMin || 0} - ${metric.baseFilter.difficultyMax || '∞'})`}
+                                        </div>
+                                        <div style="margin-bottom: 0.25rem;">
+                                            <span style="font-weight: bold; color: #374151;">Objetivo:</span> 
+                                            {metric.targetFilter.maxTimeMinutes ? `Tiempo < ${metric.targetFilter.maxTimeMinutes} min` : 'Cualquier tiempo'}
+                                        </div>
+                                        <div>
+                                            <span style="font-weight: bold; color: #374151;">Meta:</span> 
+                                            <span style="background: #ecfdf5; color: #047857; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: bold;">
+                                                {metric.target_ratio * 100}%
+                                            </span> de éxito
+                                        </div>
+                                    </div>
+                                    <form method="POST" onsubmit="return confirm('¿Eliminar esta métrica?');">
+                                        <input type="hidden" name="action" value="delete_metric">
+                                        <input type="hidden" name="id" value={metric.id}>
+                                        <input type="hidden" name="goal_id" value={currentGoal.id}>
+                                        <button type="submit" class="btn-danger">Eliminar</button>
+                                    </form>
+                                </div>
+                                
+                                <div style="background: #f8fafc; padding: 1rem; border-radius: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-size: 0.8rem; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Últimos 14 Días</span>
+                                        <span style={`font-size: 0.8rem; font-weight: bold; ${metric.isMetToday ? 'color: #16a34a' : 'color: #dc2626'}`}>
+                                            Hoy: {metric.isMetToday ? 'CUMPLIDO' : 'NO CUMPLIDO'}
+                                        </span>
+                                    </div>
+                                    <div class="squares-container">
+                                        {metric.days.map((day, idx) => (
+                                            <div 
+                                                class={`square ${day.isMet ? 'met' : (day.countB === 0 ? 'neutral' : 'not-met')}`} 
+                                                title={`Día: ${day.date}
+Problemas Base: ${day.countB}
+Cumplen Objetivo: ${day.countC}
+Ratio: ${(day.ratio * 100).toFixed(0)}% (Meta: ${metric.target_ratio * 100}%)`}
+                                            ></div>
+                                        ))}
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.7rem; color: #94a3b8;">
+                                        <span>Hace 14 días</span>
+                                        <span>Hoy</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+
+                        <div class="card" style="background: #f0fdf4; border: 1px solid #bbf7d0;">
+                            <h3 style="margin-top: 0; color: #166534;">➕ Añadir Métrica a "{currentGoal.name}"</h3>
+                            <form method="POST">
+                                <input type="hidden" name="action" value="create_metric">
+                                <input type="hidden" name="goal_id" value={currentGoal.id}>
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                                    <div>
+                                        <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: #15803d; text-transform: uppercase;">1. Filtro de Problemas (Base)</h4>
+                                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">Juez</label>
+                                        <select name="judge">
+                                            <option value="">Cualquier Juez</option>
+                                            {judges.map(j => <option value={j.name}>{j.name}</option>)}
+                                        </select>
+                                        
+                                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; margin-top: 0.5rem;">Rango de Dificultad</label>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <input type="number" name="difficulty_min" placeholder="Min">
+                                            <input type="number" name="difficulty_max" placeholder="Max">
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: #15803d; text-transform: uppercase;">2. Objetivo a Cumplir</h4>
+                                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem;">Tiempo Máximo (minutos)</label>
+                                        <input type="number" name="max_time_minutes" placeholder="Ej: 60">
+                                        
+                                        <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; margin-top: 0.5rem;">Porcentaje de Éxito Requerido (0.0 - 1.0)</label>
+                                        <input type="number" step="0.1" min="0" max="1" name="target_ratio" placeholder="Ej: 0.8 para 80%" required>
+                                        <small style="color: #6b7280;">Si pones 0.8, necesitas resolver el 80% de los problemas "Base" en menos del tiempo indicado.</small>
+                                    </div>
+                                </div>
+                                <button type="submit" style="margin-top: 1rem; width: 100%; background: #16a34a; font-weight: bold;">Añadir Métrica</button>
+                            </form>
+                        </div>
+                    </div>
+                ) : (
+                    <div class="card" style="text-align: center; color: #666; padding: 4rem;">
+                        <span style="font-size: 3rem; display: block; margin-bottom: 1rem;">🎯</span>
+                        <h2 style="color: #374151;">Selecciona o Crea una Meta</h2>
+                        <p>Empieza a monitorear tu rendimiento definiendo metas personalizadas.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

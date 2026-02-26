@@ -1,0 +1,19 @@
+{
+  "name": "upsolving-system",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "init-db": "node src/db/init.js"
+  },
+  "dependencies": {
+    "astro": "^4.0.0",
+    "better-sqlite3": "^9.0.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}
