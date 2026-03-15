@@ -5,12 +5,37 @@ import path from 'path';
 const dbPath = path.resolve('upsolving.db');
 export const db = new Database(dbPath);
 
+const problemsTable = db.prepare(`
+  SELECT name
+  FROM sqlite_master
+  WHERE type = 'table' AND name = 'problems'
+`).get();
+
+if (problemsTable) {
+  const problemColumns = db.prepare('PRAGMA table_info(problems)').all();
+  const hasUpdatedAt = problemColumns.some((column) => column.name === 'updated_at');
+
+  if (!hasUpdatedAt) {
+    db.exec('ALTER TABLE problems ADD COLUMN updated_at DATETIME');
+    db.exec(`
+      UPDATE problems
+      SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)
+      WHERE updated_at IS NULL
+    `);
+  }
+}
+
 export function getJudges() {
   return db.prepare('SELECT * FROM judges ORDER BY name ASC').all();
 }
 
 export function addJudge(name) {
-  return db.prepare('INSERT INTO judges (name) VALUES (?)').run(name);
+  const normalizedName = String(name ?? '').trim();
+  if (!normalizedName) {
+    throw new Error('Judge name is required');
+  }
+
+  return db.prepare('INSERT OR IGNORE INTO judges (name) VALUES (?)').run(normalizedName);
 }
 
 export function getSets() {

@@ -15,7 +15,8 @@ db.exec(`
     tags TEXT,
     estado TEXT DEFAULT 'pendiente',
     notas TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS judges (

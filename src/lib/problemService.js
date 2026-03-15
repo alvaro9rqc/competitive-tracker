@@ -1,4 +1,4 @@
-import { getProblemsDAO, getProblemByIdDAO, createProblemDAO, updateStatusDAO, deleteProblemDAO, updateProblemDAO, findOldestPendingDAO, findRandomNewDAO } from './problemsRepository';
+import { getProblemsDAO, getProblemByIdDAO, createProblemDAO, updateStatusDAO, deleteProblemDAO, updateProblemDAO, findOldestModifiedNonFinalizedDAO } from './problemsRepository';
 import { formatTagsForDb } from './utils';
 
 // --- Service Layer (Business Logic) ---
@@ -52,23 +52,19 @@ export function changeProblemStatus(id, status) {
 }
 
 export function getSmartRecommendation(filter = {}) {
-    // 1. Methodology Priority: Upsolving (Clean the queue)
-    // "Semana 1 (Upsolving): Limpiar la cola de pendientes."
-    const oldestPending = findOldestPendingDAO(filter);
-    
-    if (oldestPending) {
-        return {
-            problem: oldestPending,
-            reason: "Metodología: Limpiar cola de pendientes (FIFO)."
-        };
-    }
+    const excludeIds = Array.isArray(filter.excludeIds)
+        ? filter.excludeIds.filter((id) => Number.isInteger(id))
+        : [];
 
-    // 2. If Queue is clean, look for New problems to start processing
-    const randomNew = findRandomNewDAO(filter);
-    if (randomNew) {
+    const oldestModified = findOldestModifiedNonFinalizedDAO({
+        judge: filter.judge,
+        excludeIds
+    });
+
+    if (oldestModified) {
         return {
-            problem: randomNew,
-            reason: "Metodología: Explorar nuevos problemas."
+            problem: oldestModified,
+            reason: "Cola de revisión: problema no finalizado con modificación más antigua (máx. 2 meses)."
         };
     }
 

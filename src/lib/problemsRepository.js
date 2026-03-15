@@ -73,24 +73,24 @@ export function updateProblemDAO(id, data) {
     if (fields.length === 0) return { changes: 0 };
     
     params.push(id);
-    const query = `UPDATE problems SET ${fields.join(', ')} WHERE id = ?`;
+    const query = `UPDATE problems SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
     return db.prepare(query).run(...params);
 }
 
 export function createProblemDAO(problem) {
   const stmt = db.prepare(`
-    INSERT INTO problems (nombre, url, origen, tags, estado, notas, dificultad, solved_at, completion_time_minutes)
-    VALUES (@nombre, @url, @origen, @tags, @estado, @notas, @dificultad, @solved_at, @completion_time_minutes)
+    INSERT INTO problems (nombre, url, origen, tags, estado, notas, dificultad, solved_at, completion_time_minutes, updated_at)
+    VALUES (@nombre, @url, @origen, @tags, @estado, @notas, @dificultad, @solved_at, @completion_time_minutes, CURRENT_TIMESTAMP)
   `);
   return stmt.run(problem);
 }
 
 export function updateStatusDAO(id, status) {
-  return db.prepare('UPDATE problems SET estado = ? WHERE id = ?').run(status, id);
+  return db.prepare('UPDATE problems SET estado = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id);
 }
 
-export function findOldestPendingDAO(filter = {}) {
-    let query = "SELECT * FROM problems WHERE estado = 'pendiente'";
+export function findOldestModifiedNonFinalizedDAO(filter = {}) {
+    let query = "SELECT * FROM problems WHERE estado != 'finalizado' AND datetime(COALESCE(updated_at, created_at)) >= datetime('now', '-2 months')";
     const params = [];
     
     if (filter.judge) {
@@ -98,8 +98,13 @@ export function findOldestPendingDAO(filter = {}) {
         params.push(filter.judge);
     }
 
-    // Methodology: Upsolving requires clearing the queue (FIFO - First In First Out)
-    query += " ORDER BY created_at ASC LIMIT 1";
+    if (Array.isArray(filter.excludeIds) && filter.excludeIds.length > 0) {
+        const placeholders = filter.excludeIds.map(() => '?').join(',');
+        query += ` AND id NOT IN (${placeholders})`;
+        params.push(...filter.excludeIds);
+    }
+
+    query += " ORDER BY datetime(COALESCE(updated_at, created_at)) ASC, id ASC LIMIT 1";
     return db.prepare(query).get(...params);
 }
 
