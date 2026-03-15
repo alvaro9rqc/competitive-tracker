@@ -23,6 +23,27 @@ if (problemsTable) {
       WHERE updated_at IS NULL
     `);
   }
+
+  db.exec(`
+    UPDATE problems
+    SET solved_at = strftime('%Y-%m-%dT%H:%M', updated_at)
+    WHERE estado = 'finalizado'
+      AND (solved_at IS NULL OR TRIM(solved_at) = '')
+      AND updated_at IS NOT NULL
+  `);
+
+  db.exec(`
+    UPDATE problems
+    SET solved_at = strftime('%Y-%m-%dT%H:%M', updated_at)
+    WHERE estado = 'finalizado'
+      AND solved_at IS NOT NULL
+      AND TRIM(solved_at) != ''
+      AND updated_at IS NOT NULL
+      AND DATE(updated_at) > DATE(solved_at)
+      AND (
+        julianday(updated_at) - julianday(replace(substr(solved_at, 1, 19), 'T', ' '))
+      ) BETWEEN 0 AND 0.5
+  `);
 }
 
 export function getJudges() {

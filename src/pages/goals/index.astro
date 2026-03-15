@@ -57,9 +57,11 @@ if (Astro.request.method === 'POST') {
       .btn-danger { background: #dc2626; padding: 0.25rem 0.5rem; font-size: 0.8rem; }
       .btn-danger:hover { background: #b91c1c; }
       
-      .tabs { display: flex; gap: 1rem; }
-      .tab { padding: 0.5rem 1rem; border-radius: 4px; }
-      .tab.active { background: #e0e7ff; color: #3730a3; }
+      /* Navigation & Header */
+      .header { margin-bottom: 2rem; text-align: center; }
+      .tabs { display: flex; justify-content: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0; margin-bottom: 1.5rem; }
+      .tab { padding: 0.5rem 1rem; margin: 0 0.5rem; text-decoration: none; color: #6b7280; }
+      .tab.active { color: #2563eb; border-bottom: 2px solid #2563eb; font-weight: bold; }
       
       .goal-item { padding: 0.75rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; margin-bottom: 0.5rem; transition: background 0.2s; }
       .goal-item:hover { background: #f9fafb; }
@@ -93,12 +95,13 @@ if (Astro.request.method === 'POST') {
 </head>
 <body>
     <div class="container">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
-            <h1 style="display: flex; align-items: center; gap: 0.5rem;">🎯 Metas <span style="font-size: 1rem; font-weight: normal; color: #6b7280;">Monitor de Progreso</span></h1>
+        <div class="header">
+            <h1 style="margin-bottom: 1.5rem;">🎯 Upsolving & Training Tracker</h1>
             <div class="tabs">
-                <a href="/" class="tab" style="text-decoration: none; color: #6b7280;">Problemas</a>
-                <a href="/sets" class="tab" style="text-decoration: none; color: #6b7280;">Sets</a>
-                <a href="/goals" class="tab active" style="font-weight: bold; text-decoration: none;">Metas</a>
+                <a href="/" class="tab">Problemas</a>
+                <a href="/sets" class="tab">Sets</a>
+                <a href="/goals" class="tab active">Metas</a>
+                <a href="/stats" class="tab">Estadísticas</a>
             </div>
         </div>
 

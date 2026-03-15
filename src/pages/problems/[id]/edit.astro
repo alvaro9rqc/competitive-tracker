@@ -1,18 +1,19 @@
 ---
 import { getProblemById, updateProblem } from '../../../lib/problemService';
 import { getJudges } from '../../../lib/db';
-import { parseTags } from '../../../lib/utils';
+import { parseTags, formatDateTimeLocalInput } from '../../../lib/utils';
+import { getAllTags } from '../../../lib/tagsRepository';
 
 const { id } = Astro.params;
 const problem = getProblemById(id);
 const judges = getJudges();
+const allTags = getAllTags().map(t => t.name);
 
 if (!problem) {
   return Astro.redirect('/404');
 }
 
-// Format date for datetime-local input
-const solvedAtValue = problem.solved_at ? new Date(problem.solved_at).toISOString().slice(0, 16) : '';
+const solvedAtValue = formatDateTimeLocalInput(problem.solved_at);
 
 // Calculate hours and minutes for display
 const completionMinutes = problem.completion_time_minutes || 0;
@@ -115,7 +116,40 @@ const tagsString = parseTags(problem.tags).join(', ');
                 </div>
 
                 <label>Tags (separados por coma)</label>
-                <input type="text" name="tags" value={tagsString}>
+                <div style="margin-bottom: 0.5rem; position: relative;">
+                    <input type="text" name="tags" id="tagsInput" value={tagsString} autocomplete="off" style="margin-bottom: 0.2rem;">
+                    <div id="tagsFeedback" style="font-size: 0.8rem; height: 1.2em;"></div>
+                    
+                    <script define:vars={{ allTags }}>
+                        const input = document.getElementById('tagsInput');
+                        const feedback = document.getElementById('tagsFeedback');
+                        
+                        const checkTags = () => {
+                            const val = input.value;
+                            if (!val) {
+                                feedback.innerHTML = '';
+                                return;
+                            }
+                            
+                            const currentTags = val.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+                            const lastTag = currentTags[currentTags.length - 1];
+                            
+                            if (!lastTag) return;
+                            
+                            const exists = allTags.includes(lastTag);
+                            
+                            if (!exists && lastTag.length > 1) {
+                                feedback.innerHTML = `<span style="color: #d97706;">⚠️ "${lastTag}" se creará como nueva etiqueta</span>`;
+                            } else if (exists) {
+                                 feedback.innerHTML = `<span style="color: #16a34a;">✓ "${lastTag}" existe</span>`;
+                            } else {
+                                feedback.innerHTML = '';
+                            }
+                        };
+                        
+                        input.addEventListener('input', checkTags);
+                    </script>
+                </div>
 
                 <label>Notas</label>
                 <textarea name="notas" rows="4">{problem.notas}</textarea>

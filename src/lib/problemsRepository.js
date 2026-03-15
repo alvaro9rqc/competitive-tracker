@@ -85,8 +85,44 @@ export function createProblemDAO(problem) {
   return stmt.run(problem);
 }
 
+export function findProblemByCanonicalKeyDAO(problem) {
+  const normalizedUrl = String(problem.url ?? '').trim();
+  if (normalizedUrl) {
+    return db.prepare(`
+      SELECT *
+      FROM problems
+      WHERE lower(trim(url)) = lower(trim(?))
+      ORDER BY id ASC
+      LIMIT 1
+    `).get(normalizedUrl);
+  }
+
+  const normalizedName = String(problem.nombre ?? '').trim();
+  const normalizedJudge = String(problem.origen ?? '').trim();
+  if (!normalizedName) return null;
+
+  return db.prepare(`
+    SELECT *
+    FROM problems
+    WHERE lower(trim(nombre)) = lower(trim(?))
+      AND lower(trim(COALESCE(origen, ''))) = lower(trim(?))
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(normalizedName, normalizedJudge);
+}
+
 export function updateStatusDAO(id, status) {
   return db.prepare('UPDATE problems SET estado = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id);
+}
+
+export function updateStatusWithSolvedAtFallbackDAO(id, status, solvedAtFallback) {
+  return db.prepare(`
+    UPDATE problems
+    SET estado = ?,
+        solved_at = COALESCE(NULLIF(TRIM(solved_at), ''), ?),
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(status, solvedAtFallback, id);
 }
 
 export function findOldestModifiedNonFinalizedDAO(filter = {}) {

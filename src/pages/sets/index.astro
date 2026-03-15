@@ -27,8 +27,12 @@ const sets = getSets();
       button { background: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
       button:hover { background: #1d4ed8; }
       
-      .tab { margin-right: 1rem; text-decoration: none; color: #6b7280; }
-      .tab.active { font-weight: bold; color: #2563eb; }
+      .tab { padding: 0.5rem 1rem; margin: 0 0.5rem; text-decoration: none; color: #6b7280; }
+      .tab.active { color: #2563eb; border-bottom: 2px solid #2563eb; font-weight: bold; }
+      
+      /* Navigation & Header */
+      .header { margin-bottom: 2rem; text-align: center; }
+      .tabs { display: flex; justify-content: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0; margin-bottom: 1.5rem; }
       
       .set-item { border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; background: #fff; }
       .set-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
@@ -43,11 +47,13 @@ const sets = getSets();
 </head>
 <body>
 <div class="container">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
-        <h1>🎯 Upsolving & Training Tracker</h1>
+    <div class="header">
+        <h1 style="margin-bottom: 1.5rem;">🎯 Upsolving & Training Tracker</h1>
         <div class="tabs">
             <a href="/" class="tab">Problemas</a>
             <a href="/sets" class="tab active">Sets de Entrenamiento</a>
+            <a href="/goals" class="tab">Metas</a>
+            <a href="/stats" class="tab">Estadísticas</a>
         </div>
     </div>
 

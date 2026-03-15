@@ -2,8 +2,11 @@
 import { getSets, createSet, addToSet, getJudges, addJudge } from '../lib/db';
 import { getAllProblems, addNewProblem, changeProblemStatus, deleteProblem, getSmartRecommendation } from '../lib/problemService';
 import { parseTags } from '../lib/utils';
+import { getAllTags, createTag, updateTag, deleteTag, getTagByName } from '../lib/tagsRepository';
 
 const judges = getJudges();
+const fullTags = getAllTags();
+const allTags = fullTags.map(t => t.name); // Simple array of strings for client-side check
 
 // Handle Form Submissions
 if (Astro.request.method === 'POST') {
@@ -51,6 +54,18 @@ if (Astro.request.method === 'POST') {
     deleteProblem(data.get('id'));
   } else if (action === 'add_judge') {
     addJudge(data.get('name'));
+  } else if (action === 'create_tag') {
+    createTag(data.get('name'));
+  } else if (action === 'update_tag_by_name') {
+    const tag = getTagByName(data.get('old_name'));
+    if (tag) {
+        updateTag(tag.id, data.get('new_name'));
+    }
+  } else if (action === 'delete_tag_by_name') {
+    const tag = getTagByName(data.get('name'));
+    if (tag) {
+        deleteTag(tag.id);
+    }
   }
 }
 
@@ -91,6 +106,19 @@ resetRecommendationParams.delete('seen');
 const resetRecommendationQuery = resetRecommendationParams.toString();
 const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendationQuery}` : '/';
 
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'N/A';
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return String(dateString);
+  return parsed.toLocaleString('es-ES', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 ---
 
 <html lang="es">
@@ -100,18 +128,30 @@ const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendati
     <style>
       body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
       .container { max-width: 1400px; margin: 0 auto; }
+      
+      /* Navigation & Header */
+      .header { margin-bottom: 2rem; text-align: center; }
+      .tabs { display: flex; justify-content: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0; margin-bottom: 1.5rem; }
+      .tab { padding: 0.5rem 1rem; margin: 0 0.5rem; text-decoration: none; color: #6b7280; }
+      .tab.active { color: #2563eb; border-bottom: 2px solid #2563eb; font-weight: bold; }
+
       .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
       h1, h2, h3, h4 { color: #111827; margin-top: 0; }
-      .grid { display: grid; grid-template-columns: 350px 1fr 300px; gap: 2rem; }
+      
+      .grid { display: grid; grid-template-columns: 350px 1fr; gap: 2rem; }
+      @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+
       input, select, textarea { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid #d4d4d8; border-radius: 4px; box-sizing: border-box;}
       button { background: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
       button:hover { background: #1d4ed8; }
       .btn-secondary { background: #64748b; }
       .btn-secondary:hover { background: #475569; }
+      .btn-danger { background: #ef4444; }
+      .btn-danger:hover { background: #dc2626; }
       
       .tag { display: inline-block; background: #e4e4e7; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.25rem; color: #52525b;}
       
-      .status-nuevo { color: #8b5cf6; font-weight: bold; } /* Purple for new */
+      .status-nuevo { color: #8b5cf6; font-weight: bold; }
       .status-pendiente { color: #ea580c; font-weight: bold; }
       .status-resuelto { color: #16a34a; font-weight: bold; }
       .status-finalizado { color: #0d9488; font-weight: bold; }
@@ -120,21 +160,27 @@ const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendati
       .problem-item { border-bottom: 1px solid #f3f4f6; padding: 0.75rem 0; display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
       .problem-item:last-child { border-bottom: none; }
       
-      .set-section { margin-top: 2rem; border-left: 4px solid #2563eb; }
-      
       .recommendation-box { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; }
       
-      .filter-bar { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+      .filter-bar { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); flex-wrap: wrap; }
+      
+      details summary { cursor: pointer; font-size: 0.85rem; color: #4b5563; margin-bottom: 0.5rem; user-select: none; }
+      details summary:hover { color: #1f2937; }
+      
+      .tag-form { display: grid; gap: 0.5rem; margin: 0; background: #f9fafb; padding: 0.5rem; border-radius: 4px; }
+      .tag-form input { margin: 0; font-size: 0.85rem; padding: 0.3rem; }
+      .tag-form button { padding: 0.3rem 0.8rem; font-size: 0.85rem; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
-        <h1>🎯 Upsolving & Training Tracker</h1>
+    <div class="header">
+        <h1 style="margin-bottom: 1.5rem;">🎯 Upsolving & Training Tracker</h1>
         <div class="tabs">
-            <a href="/" class="tab active" style="margin-right: 1rem; font-weight: bold; text-decoration: none; color: #2563eb;">Problemas</a>
-            <a href="/sets" class="tab" style="margin-right: 1rem; text-decoration: none; color: #6b7280;">Sets de Entrenamiento</a>
-            <a href="/goals" class="tab" style="text-decoration: none; color: #6b7280;">Metas</a>
+            <a href="/" class="tab active">Problemas</a>
+            <a href="/sets" class="tab">Sets de Entrenamiento</a>
+            <a href="/goals" class="tab">Metas</a>
+            <a href="/stats" class="tab">Estadísticas</a>
         </div>
     </div>
 
@@ -250,7 +296,41 @@ const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendati
                          </div>
                     </div>
 
-                    <input type="text" name="tags" placeholder="Tags (dp, grafos...)">
+                    <div style="margin-bottom: 0.5rem; position: relative;">
+                        <input type="text" name="tags" id="tagsInput" placeholder="Tags (dp, grafos...)" autocomplete="off" style="margin-bottom: 0.2rem;">
+                        <div id="tagsFeedback" style="font-size: 0.8rem; height: 1.2em;"></div>
+                        
+                        <!-- Client-side script for tag suggestions/feedback -->
+                        <script define:vars={{ allTags }}>
+                            const input = document.getElementById('tagsInput');
+                            const feedback = document.getElementById('tagsFeedback');
+                            
+                            input.addEventListener('input', (e) => {
+                                const val = e.target.value;
+                                if (!val) {
+                                    feedback.innerHTML = '';
+                                    return;
+                                }
+                                
+                                const currentTags = val.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+                                const lastTag = currentTags[currentTags.length - 1];
+                                
+                                if (!lastTag) return;
+                                
+                                // Check if last tag exists
+                                const exists = allTags.includes(lastTag);
+                                
+                                if (!exists && lastTag.length > 1) {
+                                    feedback.innerHTML = `<span style="color: #d97706;">⚠️ "${lastTag}" se creará como nueva etiqueta</span>`;
+                                } else if (exists) {
+                                     feedback.innerHTML = `<span style="color: #16a34a;">✓ "${lastTag}" existe</span>`;
+                                } else {
+                                    feedback.innerHTML = '';
+                                }
+                            });
+                        </script>
+                    </div>
+
                     <textarea name="notas" placeholder="Notas..." rows="3"></textarea>
                     <button type="submit">Agregar a la Cola</button>
                 </form>
@@ -266,6 +346,56 @@ const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendati
                     <input type="text" name="name" placeholder="Nuevo Jurado" required style="margin:0;">
                     <button type="submit" class="btn-secondary" style="width: auto;">+</button>
                 </form>
+            </div>
+
+            <div class="card">
+                <h3>🏷️ Etiquetas</h3>
+                
+                <!-- 1. Display Tags (Clean Look) -->
+                <div style="max-height: 150px; overflow-y: auto; margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-content: flex-start;">
+                    {fullTags.length === 0 && <p style="font-size: 0.8rem; color: #9ca3af; width: 100%; text-align: center;">Sin etiquetas</p>}
+                    {fullTags.map(t => (
+                        <span class="tag" style="font-size: 0.85rem; padding: 0.25rem 0.6rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+                            {t.name}
+                        </span>
+                    ))}
+                </div>
+
+                <!-- 2. Management Actions -->
+                <div style="border-top: 1px solid #f3f4f6; padding-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    
+                    <!-- Add -->
+                    <form method="POST" class="tag-form" style="grid-template-columns: 1fr auto;">
+                        <input type="hidden" name="action" value="create_tag">
+                        <input type="text" name="name" placeholder="Nueva..." required>
+                        <button type="submit" class="btn-secondary">Crear</button>
+                    </form>
+
+                    <!-- Edit -->
+                    <details>
+                        <summary>✏️ Editar etiqueta</summary>
+                        <form method="POST" class="tag-form" style="grid-template-columns: 1fr 1fr auto;">
+                            <input type="hidden" name="action" value="update_tag_by_name">
+                            <input type="text" name="old_name" list="tags-list" placeholder="Actual..." required>
+                            <input type="text" name="new_name" placeholder="Nuevo nombre" required>
+                            <button type="submit" style="background: #e5e7eb; color: #374151;">OK</button>
+                        </form>
+                    </details>
+
+                    <!-- Delete -->
+                    <details>
+                        <summary style="color: #991b1b;">🗑️ Eliminar etiqueta</summary>
+                        <form method="POST" class="tag-form" style="grid-template-columns: 1fr auto;" onsubmit="return confirm('¿Borrar esta etiqueta de TODOS los problemas?');">
+                            <input type="hidden" name="action" value="delete_tag_by_name">
+                            <input type="text" name="name" list="tags-list" placeholder="Nombre a borrar..." required>
+                            <button type="submit" style="background: #fee2e2; color: #991b1b;">Borrar</button>
+                        </form>
+                    </details>
+
+                    <datalist id="tags-list">
+                        {fullTags.map(t => <option value={t.name} />)}
+                    </datalist>
+                </div>
             </div>
         </div>
 
@@ -295,6 +425,10 @@ const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendati
                                 {parseTags(p.tags).map((t: string) => <span class="tag">{t}</span>)}
                             </div>
                             {p.notas && <p style="font-size: 0.85rem; color: #4b5563; margin: 0.25rem 0 0 0; white-space: pre-wrap;">{p.notas}</p>}
+                            <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.35rem; display: flex; gap: 0.75rem 1rem; flex-wrap: wrap;">
+                                {p.solved_at && <span>✅ Resolución: {formatDateTime(p.solved_at)}</span>}
+                                <span>🛠️ Última modificación: {formatDateTime(p.updated_at || p.created_at)}</span>
+                            </div>
                         </div>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
                             <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -326,11 +460,6 @@ const resetRecommendationUrl = resetRecommendationQuery ? `/?${resetRecommendati
                     </div>
                 ))}
             </div>
-        </div>
-
-        <!-- Right Column: Training Sets (Removed, moved to /sets) -->
-        <div>
-           <!-- Section moved to /sets -->
         </div>
     </div>
 </div>
