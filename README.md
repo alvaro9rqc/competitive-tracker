@@ -26,6 +26,18 @@ La aplicación está construida con **Astro**, **SQLite** y **TailwindCSS**, ofr
 ### 3. Recomendaciones Inteligentes
 - El sistema sugiere qué problema resolver a continuación basándose en una metodología FIFO (First-In, First-Out) para limpiar la cola de pendientes, o explorando nuevos problemas al azar si estás al día.
 
+### 4. Estadísticas (`/stats`)
+- **Pulso de Entrenamiento (Barra + Acumulado):** usa `solved_at` como fecha de evento real.
+- **Filtros avanzados del Pulso:**
+  - Búsqueda por nombre de problema.
+  - Filtro por juez.
+  - Filtro por tag.
+  - Ventana temporal configurable (`7/14/30/60/90/180` días).
+  - Rango personalizado (`desde` / `hasta`).
+  - Multi-selección de estados (si no seleccionas ninguno, se usa `resuelto + finalizado` por defecto).
+  - Operadores para dificultad y tiempo (`=`, `>`, `<`, `>=`, `<=`).
+- **Consistencia temporal:** para estados `finalizado`, se considera `solved_at` como referencia canónica para gráficos y seguimiento.
+
 ## Instalación y Uso
 
 ### Prerrequisitos

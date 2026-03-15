@@ -1,0 +1,416 @@
+---
+import { getDashboardStats } from '../lib/statsService';
+import { getJudges } from '../lib/db';
+import { getAllTags } from '../lib/tagsRepository';
+
+const url = new URL(Astro.request.url);
+const statusOptions = [
+    { value: 'nuevo', label: 'Nuevo' },
+    { value: 'pendiente', label: 'Pendiente' },
+    { value: 'resuelto', label: 'Resuelto' },
+    { value: 'finalizado', label: 'Finalizado' },
+    { value: 'baul', label: 'Baúl' }
+];
+
+const allowedStatuses = statusOptions.map((status) => status.value);
+const selectedStatuses = url.searchParams
+    .getAll('status')
+    .map((status) => String(status || '').trim().toLowerCase())
+    .filter((status) => allowedStatuses.includes(status));
+
+const parsedDays = Number.parseInt(url.searchParams.get('days') || '30', 10);
+const days = Number.isInteger(parsedDays) && parsedDays > 0 ? parsedDays : 30;
+
+const difficultyRaw = url.searchParams.get('difficulty_val');
+const parsedDifficulty = Number.parseInt(difficultyRaw || '', 10);
+const difficultyVal = Number.isFinite(parsedDifficulty) ? parsedDifficulty : null;
+
+const timeRaw = url.searchParams.get('time_val');
+const parsedTimeVal = Number.parseInt(timeRaw || '', 10);
+let timeVal = Number.isFinite(parsedTimeVal) ? parsedTimeVal : null;
+
+const timeH = url.searchParams.get('time_h');
+const timeM = url.searchParams.get('time_m');
+if (timeH || timeM) {
+    const h = Number.parseInt(timeH || '0', 10);
+    const m = Number.parseInt(timeM || '0', 10);
+    if (Number.isFinite(h) && Number.isFinite(m) && h >= 0 && m >= 0) {
+        timeVal = (h * 60) + m;
+    }
+}
+
+const filters = {
+    judge: url.searchParams.get('judge') || '',
+    statuses: selectedStatuses,
+    query: url.searchParams.get('q') || '',
+    tag: url.searchParams.get('tag') || '',
+    days,
+    dateFrom: url.searchParams.get('from') || '',
+    dateTo: url.searchParams.get('to') || '',
+    difficultyOp: url.searchParams.get('difficulty_op') || '=',
+    difficultyVal,
+    timeOp: url.searchParams.get('time_op') || '=',
+    timeVal
+};
+
+const stats = getDashboardStats(filters);
+const judges = getJudges();
+const tags = getAllTags();
+
+const activeStatusLabel = selectedStatuses.length > 0
+    ? selectedStatuses.join(', ')
+    : 'resuelto, finalizado (default)';
+const pulseWindowLabel = (filters.dateFrom || filters.dateTo)
+    ? `${stats.pulseRange.startDate} → ${stats.pulseRange.endDate}`
+    : `Últimos ${filters.days} días`;
+
+const hasActiveFilters = Boolean(
+    filters.judge ||
+    filters.query ||
+    filters.tag ||
+    filters.dateFrom ||
+    filters.dateTo ||
+    filters.difficultyVal !== null ||
+    filters.timeVal !== null ||
+    selectedStatuses.length > 0 ||
+    filters.days !== 30
+);
+
+const chartData = {
+    dailyLabels: stats.dailyActivity.map(d => d.date),
+    dailyValues: stats.dailyActivity.map(d => d.count),
+    cumulativeValues: stats.cumulativeActivity.map(d => d.count),
+    
+    statusLabels: stats.statusDistribution.map(d => d.estado),
+    statusValues: stats.statusDistribution.map(d => d.count),
+    
+    tagsLabels: stats.tagsDistribution.map(d => d.name),
+    tagsValues: stats.tagsDistribution.map(d => d.count),
+    
+    scatterData: stats.scatterData.map(d => ({ x: d.dificultad, y: d.completion_time_minutes, label: d.nombre }))
+};
+---
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Estadísticas - Upsolving System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; color: #1f2937; }
+      .container { max-width: 1200px; margin: 0 auto; }
+      .header { margin-bottom: 2rem; text-align: center; }
+      .tabs { display: flex; justify-content: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0; margin-bottom: 2rem; }
+      .tab { padding: 0.5rem 1rem; margin: 0 0.5rem; text-decoration: none; color: #6b7280; }
+      .tab.active { color: #2563eb; border-bottom: 2px solid #2563eb; font-weight: bold; }
+      
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+      .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+      .full-width { grid-column: 1 / -1; }
+      
+      h2 { margin-top: 0; font-size: 1.25rem; color: #374151; margin-bottom: 1rem; }
+
+      .filters-box { background: #f8fafc; padding: 1rem; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 1rem; }
+      .filters-form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+      .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+      .filter-group label { font-size: 0.8rem; font-weight: bold; color: #64748b; }
+      .filter-group select, .filter-group input { padding: 0.4rem; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9rem; }
+      .btn-apply { background: #2563eb; color: white; padding: 0.4rem 1rem; border: none; border-radius: 4px; cursor: pointer; height: 34px; }
+      .btn-apply:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin-bottom: 1.5rem;">📊 Centro de Alto Rendimiento</h1>
+            <div class="tabs">
+                <a href="/" class="tab">Problemas</a>
+                <a href="/sets" class="tab">Sets</a>
+                <a href="/goals" class="tab">Metas</a>
+                <a href="/stats" class="tab active">Estadísticas</a>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- 1. Activity Pulse -->
+            <div class="card full-width">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
+                    <h2>💓 Pulso de Entrenamiento ({pulseWindowLabel})</h2>
+                    <span style="font-size: 0.8rem; color: #64748b;">
+                        Estados activos: {activeStatusLabel}
+                    </span>
+                </div>
+
+                <!-- Filters for this chart -->
+                <div class="filters-box">
+                    <form class="filters-form">
+                        <div class="filter-group">
+                            <label>Búsqueda</label>
+                            <input type="text" name="q" placeholder="Nombre del problema..." value={filters.query}>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Jurado</label>
+                            <select name="judge">
+                                <option value="">Todos</option>
+                                {judges.map(j => <option value={j.name} selected={filters.judge === j.name}>{j.name}</option>)}
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Tag</label>
+                            <select name="tag">
+                                <option value="">Todos</option>
+                                {tags.map(t => <option value={t.name} selected={filters.tag === t.name}>{t.name}</option>)}
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Ventana (días)</label>
+                            <select name="days">
+                                {[7, 14, 30, 60, 90, 180].map((windowDays) => (
+                                    <option value={windowDays} selected={filters.days === windowDays}>{windowDays}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Rango custom (Desde)</label>
+                            <input type="date" name="from" value={filters.dateFrom}>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Rango custom (Hasta)</label>
+                            <input type="date" name="to" value={filters.dateTo}>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Dificultad</label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <select name="difficulty_op" style="width: 60px;">
+                                    <option value="=" selected={filters.difficultyOp === '='}>=</option>
+                                    <option value=">=" selected={filters.difficultyOp === '>='}>&gt;=</option>
+                                    <option value="<=" selected={filters.difficultyOp === '<='}>&lt;=</option>
+                                    <option value=">" selected={filters.difficultyOp === '>'}>&gt;</option>
+                                    <option value="<" selected={filters.difficultyOp === '<'}>&lt;</option>
+                                </select>
+                                <input type="number" name="difficulty_val" placeholder="Rating..." value={filters.difficultyVal || ''} style="width: 80px;">
+                            </div>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Tiempo (HH:MM)</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <select name="time_op" style="width: 60px;">
+                                    <option value="=" selected={filters.timeOp === '='}>=</option>
+                                    <option value=">=" selected={filters.timeOp === '>='}>&gt;=</option>
+                                    <option value="<=" selected={filters.timeOp === '<='}>&lt;=</option>
+                                    <option value=">" selected={filters.timeOp === '>'}>&gt;</option>
+                                    <option value="<" selected={filters.timeOp === '<'}>&lt;</option>
+                                </select>
+                                <div style="display: flex; align-items: center; gap: 2px;">
+                                    <input type="number" name="time_h" placeholder="00" min="0" 
+                                           value={url.searchParams.get('time_h') || ''}
+                                           style="width: 50px; text-align: center;">
+                                    <span>:</span>
+                                    <input type="number" name="time_m" placeholder="00" min="0" max="59" 
+                                           value={url.searchParams.get('time_m') || ''}
+                                           style="width: 50px; text-align: center;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-group" style="min-width: 230px;">
+                            <label>Estados (multi-select)</label>
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem; font-size: 0.85rem;">
+                                {statusOptions.map((status) => (
+                                    <label style="display: inline-flex; align-items: center; gap: 0.2rem; cursor: pointer;">
+                                        <input
+                                            type="checkbox"
+                                            name="status"
+                                            value={status.value}
+                                            checked={selectedStatuses.includes(status.value)}
+                                            style="width: auto; margin: 0;"
+                                        />
+                                        {status.label}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>&nbsp;</label>
+                            <button type="submit" class="btn-apply">Filtrar</button>
+                        </div>
+                        
+                        {hasActiveFilters && (
+                            <div class="filter-group">
+                                <label>&nbsp;</label>
+                                <a href="/stats" style="color: #ef4444; font-size: 0.9rem; text-decoration: underline; padding-top: 0.5rem;">Limpiar</a>
+                            </div>
+                        )}
+                    </form>
+                </div>
+
+                <div style="height: 300px; position: relative;">
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. Status Funnel -->
+            <div class="card">
+                <h2>📥 Embudo de Estados</h2>
+                <div style="height: 300px; position: relative; display: flex; justify-content: center;">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 3. Radar Skills -->
+            <div class="card">
+                <h2>🕸️ Radar de Habilidades (Top 10 Tags)</h2>
+                <div style="height: 300px; position: relative; display: flex; justify-content: center;">
+                    <canvas id="tagsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 4. Flow Zone -->
+            <div class="card full-width">
+                <h2>🌊 Zona de Flujo: Tiempo vs Dificultad</h2>
+                <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem;">Detecta problemas fáciles que te toman mucho tiempo (arriba izquierda) o difíciles que resuelves rápido (abajo derecha).</p>
+                <div style="height: 400px; position: relative;">
+                    <canvas id="scatterChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Injection -->
+    <script define:vars={{ chartData }}>
+        // Wait for DOM and Chart.js
+        document.addEventListener('DOMContentLoaded', () => {
+             if (typeof Chart === 'undefined') {
+                console.error('Chart.js not loaded');
+                document.querySelectorAll('canvas').forEach(c => {
+                    c.parentNode.innerHTML = '<p style="color:red; text-align:center;">Error cargando librería de gráficos</p>';
+                });
+                return;
+             }
+
+             // 1. Activity Chart
+             const ctxActivity = document.getElementById('activityChart');
+             if (ctxActivity) {
+                new Chart(ctxActivity, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.dailyLabels,
+                        datasets: [
+                            {
+                                label: 'Matches Diarios',
+                                data: chartData.dailyValues,
+                                backgroundColor: 'rgba(37, 99, 235, 0.6)',
+                                borderColor: 'rgba(37, 99, 235, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y'
+                            },
+                            {
+                                type: 'line',
+                                label: 'Acumulado',
+                                data: chartData.cumulativeValues,
+                                borderColor: '#059669',
+                                borderWidth: 2,
+                                tension: 0.3,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, type: 'linear', position: 'left' },
+                            y1: { beginAtZero: true, type: 'linear', position: 'right', grid: { drawOnChartArea: false } }
+                        }
+                    }
+                });
+             }
+
+            // 2. Status Chart
+            const ctxStatus = document.getElementById('statusChart');
+            if (ctxStatus) {
+                if (chartData.statusValues.every(v => v === 0)) {
+                     ctxStatus.parentNode.innerHTML = '<p style="color:#666; text-align:center; padding-top: 2rem;">Sin datos de estado</p>';
+                } else {
+                    new Chart(ctxStatus, {
+                        type: 'doughnut',
+                        data: {
+                            labels: chartData.statusLabels,
+                            datasets: [{
+                                data: chartData.statusValues,
+                                backgroundColor: ['#8b5cf6', '#ea580c', '#16a34a', '#0d9488', '#52525b'],
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                }
+            }
+
+            // 3. Tags Chart
+            const ctxTags = document.getElementById('tagsChart');
+            if (ctxTags) {
+                if (chartData.tagsValues.length === 0) {
+                     ctxTags.parentNode.innerHTML = '<p style="color:#666; text-align:center; padding-top: 2rem;">Sin etiquetas registradas en problemas resueltos</p>';
+                } else {
+                    new Chart(ctxTags, {
+                        type: 'radar',
+                        data: {
+                            labels: chartData.tagsLabels,
+                            datasets: [{
+                                label: 'Problemas Resueltos',
+                                data: chartData.tagsValues,
+                                backgroundColor: 'rgba(236, 72, 153, 0.2)',
+                                borderColor: 'rgba(236, 72, 153, 1)',
+                                pointBackgroundColor: 'rgba(236, 72, 153, 1)',
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                }
+            }
+
+            // 4. Scatter Chart
+            const ctxScatter = document.getElementById('scatterChart');
+            if (ctxScatter) {
+                 if (chartData.scatterData.length === 0) {
+                     ctxScatter.parentNode.innerHTML = '<p style="color:#666; text-align:center; padding-top: 2rem;">Faltan datos de tiempo/dificultad en problemas resueltos</p>';
+                 } else {
+                    new Chart(ctxScatter, {
+                        type: 'scatter',
+                        data: {
+                            datasets: [{
+                                label: 'Problemas',
+                                data: chartData.scatterData,
+                                backgroundColor: '#ea580c'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        label: (ctx) => `${ctx.raw.label} (Diff: ${ctx.raw.x}, Time: ${ctx.raw.y}m)`
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { title: { display: true, text: 'Dificultad (Rating)' } },
+                                y: { title: { display: true, text: 'Tiempo (Minutos)' } }
+                            }
+                        }
+                    });
+                 }
+            }
+        });
+    </script>
+</body>
+</html>

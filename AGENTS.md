@@ -120,6 +120,15 @@ Astro uses file-based routing.
             *   **Visualization**: Renders the 14-day progress squares using CSS.
             *   Logic to process the `getGoalWithStatus` data and display "Met/Not Met" status.
 
+*   **`stats.astro`**:
+    *   **Route**: `/stats`
+    *   **Features**:
+        *   Pulse chart (daily matches + cumulative).
+        *   Status funnel, tags radar, and difficulty/time scatter.
+        *   Advanced pulse filters: multi-status, judge, tag, text search, days window, custom date range, difficulty operator, time operator.
+    *   **Consistency rule**:
+        *   Pulse groups by `DATE(solved_at)`; `solved_at` is treated as canonical completion date.
+
 ## Database Schema
 
 ### `problems`
@@ -136,6 +145,7 @@ Astro uses file-based routing.
 | `solved_at` | DATETIME | When the problem was solved |
 | `completion_time_minutes` | INTEGER | Time taken to solve in minutes |
 | `created_at` | DATETIME | Creation timestamp |
+| `updated_at` | DATETIME | Last update timestamp |
 
 ### `judges`
 | Column | Type | Description |
@@ -199,6 +209,10 @@ The core of the new feature is in `goalsService.js`.
 *   **Resuelto**: Solved (classic status).
 *   **Finalizado**: Solved and processed (e.g., notes added, reflection done). This is a new status added for the metrics feature.
 *   **Baul**: Archived/Ignored.
+
+### Temporal Data Consistency
+*   `solved_at` is the canonical event timestamp for solved/finalized analytics.
+*   For pulse analytics, changing `updated_at` without changing `solved_at` should not move historical activity bars.
 
 ## UI Components & Design
 
